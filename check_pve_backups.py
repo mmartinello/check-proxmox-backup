@@ -326,7 +326,7 @@ class Checker:
                 node_vms.append({
                     'vmid': vm['vmid'],
                     'name': vm['name'],
-                    'type': vm_type
+                    'type': vm['type']
                 })
 
         vm_count = len(node_vms)
