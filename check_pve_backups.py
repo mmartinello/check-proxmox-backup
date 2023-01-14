@@ -44,6 +44,7 @@ def icinga_exit(level, details=None, perfdata=[]):
     sys.exit(level)
 
 def exit_with_error(message):
+    message = 'ERROR: {}'.format(message)
     icinga_exit(ICINGA_UNKNOWN, message)
 
 
@@ -133,6 +134,15 @@ class Checker:
         )
 
         parser.add_argument(
+            '-i', '--vmid',
+            action='append',
+            dest='included_vmids',
+            type=int,
+            default=[],
+            help='List of VM IDs to be checked'
+        )
+
+        parser.add_argument(
             '-e', '--exclude',
             action='append',
             dest='excluded_vmids',
@@ -179,11 +189,18 @@ class Checker:
         # the Proxmox API password
         self.verify_ssl = getattr(args, 'verify_ssl', False)
 
+        # included VM IDs
+        self.included_vmids = getattr(args, 'included_vmids', [])
+
         # excluded VM IDs
         self.excluded_vmids = getattr(args, 'excluded_vmids', [])
 
         # print arguments (debug)
         logging.debug('Command arguments: {}'.format(args))
+
+        # include and exclude are forbidded together
+        if self.included_vmids and self.excluded_vmids:
+            exit_with_error('You cannot include and exclude at the same time')
 
         # error level (only in 'not_backed_up' check mode, else exit)
         level = getattr(args, 'level', None)
@@ -206,6 +223,20 @@ class Checker:
         # nothing has failed before, return success
         icinga_exit(ICINGA_OK)
 
+    def _get_included_vmids(self):
+            """Get included VM IDs
+            """
+            included_vmids = list(set(self.included_vmids))
+            logging.debug("Included VMs: {}".format(included_vmids))
+            return included_vmids
+
+    def _get_excluded_vmids(self):
+        """Get excluded VM IDs
+        """
+        excluded_vmids = list(set(self.excluded_vmids))
+        logging.debug("Excluded VMs: {}".format(excluded_vmids))
+        return excluded_vmids
+
     def _check_vm_not_backed_up(self):
         """Check if there are virtual machines without backup jobs
         """
@@ -218,9 +249,9 @@ class Checker:
         msg = msg.format(cluster_not_backed_up_vms)
         logging.debug(msg)
 
-        # exclude VMs if requested
-        excluded_vmids = list(set(self.excluded_vmids))
-        logging.debug("Excluded VMs: {}".format(excluded_vmids))
+        # get included and excluded VMs if requested
+        included_vmids = self._get_included_vmids()
+        excluded_vmids = self._get_excluded_vmids()
 
         # get virtual machines on selected node if given
         if self.node:
@@ -233,15 +264,47 @@ class Checker:
         for vm in cluster_not_backed_up_vms:
             vmid = vm['vmid']
 
-            if vmid not in excluded_vmids:
-                if self.node:
-                    if vmid in node_vms:
-                        msg = 'Adding the VMID {} to the not backed up list'
+            if self.node:
+                if vmid in node_vms:
+                    if included_vmids:
+                        if vmid in included_vmids:
+                            msg = '1 Adding the VMID {} to not backed up list'
+                            logging.debug(msg.format(vmid))
+                            not_backed_up_vms.append(vm)
+                            continue
+                        else:
+                            continue
+                    if excluded_vmids:
+                        if vmid not in excluded_vmids:
+                            msg = '2 Adding the VMID {} to not backed up list'
+                            logging.debug(msg.format(vmid))
+                            not_backed_up_vms.append(vm)
+                            continue
+                        else:
+                            continue
+                    else:
+                        msg = '3 Adding the VMID {} to not backed up list'
                         logging.debug(msg.format(vmid))
                         not_backed_up_vms.append(vm)
                 else:
-                    logging.debug("Adding VMID (2) {}".format(vmid))
-                    not_backed_up_vms.append(vm)
+                    continue
+            else:
+                if included_vmids:
+                    if vmid in included_vmids:
+                        msg = '4 Adding the VMID {} to not backed up list'
+                        logging.debug(msg.format(vmid))
+                        not_backed_up_vms.append(vm)
+                        continue
+                    else:
+                        continue
+                if excluded_vmids:
+                    if vmid not in excluded_vmids:
+                        msg = '5 Adding the VMID {} to not backed up list'
+                        logging.debug(msg.format(vmid))
+                        not_backed_up_vms.append(vm)
+                        continue
+                    else:
+                        continue
                 
         # compose perfdata
         not_backed_up_count = len(not_backed_up_vms)
