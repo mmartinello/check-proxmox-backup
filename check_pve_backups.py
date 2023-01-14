@@ -212,33 +212,39 @@ class Checker:
 
         # get VMs not backed up
         url = '/cluster/backup-info/not-backed-up'
-        not_backed_up = self.proxmox(url).get()
+        cluster_not_backed_up_vms = self.proxmox(url).get()
         
-        msg = 'VMs not backed up: {}'.format(not_backed_up)
+        msg = 'Cluster VMs not backed up in the whole cluster: {}'
+        msg = msg.format(cluster_not_backed_up_vms)
         logging.debug(msg)
+
+        # exclude VMs if requested
+        excluded_vmids = list(set(self.excluded_vmids))
+        logging.debug("Excluded VMs: {}".format(excluded_vmids))
 
         # get virtual machines on selected node if given
         if self.node:
             node_vms = self._get_node_vms(self.node)
 
-        # exclude VMs if requested
-        excluded_vmids = list(set(self.excluded_vmids))
-        included_vms = []
-        if len(excluded_vmids):
-            logging.debug('Excluded VM IDs: {}'.format(excluded_vmids))
+        # not backed up virtual machines
+        not_backed_up_vms = []
 
-            for vm in not_backed_up:
-                vmid = vm['vmid']
+        # cycle VMs not backed up in the cluster
+        for vm in cluster_not_backed_up_vms:
+            vmid = vm['vmid']
 
-                if vmid not in excluded_vmids:
-                    msg = 'Including VM {} ...'.format(vmid)
-                    logging.debug(msg)
-                    included_vms.append(vm)
-        else:
-            included_vms = not_backed_up
-
+            if vmid not in excluded_vmids:
+                if self.node:
+                    if vmid in node_vms:
+                        msg = 'Adding the VMID {} to the not backed up list'
+                        logging.debug(msg.format(vmid))
+                        not_backed_up_vms.append(vm)
+                else:
+                    logging.debug("Adding VMID (2) {}".format(vmid))
+                    not_backed_up_vms.append(vm)
+                
         # compose perfdata
-        not_backed_up_count = len(included_vms)
+        not_backed_up_count = len(not_backed_up_vms)
         perfdata = ['not_backed_up={}'.format(not_backed_up_count)]
 
         # check included not backed up virtual machines
@@ -250,13 +256,11 @@ class Checker:
 
             # compose the exit message elements
             elements = []
-            for vm in included_vms:
+            for vm in not_backed_up_vms:
                 if vm['type'] == 'qemu':
                     type = 'VM'
                 elif vm['type'] == 'lxc':
                     type = 'CT'
-                else:
-                    type = 'OTHER'
 
                 vmid = vm['vmid']
                 name = vm['name']
@@ -323,16 +327,14 @@ class Checker:
             vms = self.proxmox(url.format(node_name, vm_type)).get()
 
             for vm in vms:
-                node_vms.append({
-                    'vmid': vm['vmid'],
-                    'name': vm['name'],
-                    'type': vm_type
-                })
+                node_vms.append(int(vm['vmid']))
 
         vm_count = len(node_vms)
         msg = '{} virtual machines on node {}: {}'
         msg = msg.format(vm_count, node_name, node_vms)
         logging.debug(msg)
+
+        return node_vms
 
 
 if __name__ == "__main__":
