@@ -134,24 +134,6 @@ class Checker:
         )
 
         parser.add_argument(
-            '-i', '--vmid',
-            action='append',
-            dest='included_vmids',
-            type=int,
-            default=[],
-            help='List of VM IDs to be checked'
-        )
-
-        parser.add_argument(
-            '-e', '--exclude',
-            action='append',
-            dest='excluded_vmids',
-            type=int,
-            default=[],
-            help='List of VM IDs to be excluded from check'
-        )
-
-        parser.add_argument(
             '-l', '--level',
             choices=['warning', 'critical'],
             dest='level',
@@ -164,6 +146,26 @@ class Checker:
             '-n', '--node',
             dest='node',
             help='Filter the VMs running on this Proxmox node'
+        )
+
+        vms_group = parser.add_mutually_exclusive_group()
+
+        vms_group.add_argument(
+            '-i', '--include', '--vmid',
+            action='append',
+            dest='included_vmids',
+            type=int,
+            default=[],
+            help='List of VM IDs to be checked'
+        )
+
+        vms_group.add_argument(
+            '-e', '--exclude',
+            action='append',
+            dest='excluded_vmids',
+            type=int,
+            default=[],
+            help='List of VM IDs to be excluded from check'
         )
 
     def _manage_arguments(self, args):
@@ -197,10 +199,6 @@ class Checker:
 
         # print arguments (debug)
         logging.debug('Command arguments: {}'.format(args))
-
-        # include and exclude are forbidded together
-        if self.included_vmids and self.excluded_vmids:
-            exit_with_error('You cannot include and exclude at the same time')
 
         # error level (only in 'not_backed_up' check mode, else exit)
         level = getattr(args, 'level', None)
