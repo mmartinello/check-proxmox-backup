@@ -150,6 +150,12 @@ class Checker:
                  ' (\'not_backed_up\' check only)'
         )
 
+        parser.add_argument(
+            '-n', '--node',
+            dest='node',
+            help='Filter the VMs running on this Proxmox node'
+        )
+
     def _manage_arguments(self, args):
         # positional: check to be done
         self.check = getattr(args, 'check')
@@ -186,7 +192,14 @@ class Checker:
         else:
             self.level = getattr(args, 'level')
 
+        # Proxmox node
+        self.node = getattr(args, 'node', None)
+
     def handle(self):
+        # connect to Proxmox and ask for VMs not backed up
+        self.proxmox = self._pve_connect()
+        
+
         if self.check == 'not_backed_up':
             self._check_vm_not_backed_up()
 
@@ -197,12 +210,16 @@ class Checker:
         """Check if there are virtual machines without backup jobs
         """
 
-        # connect to Proxmox and ask for VMs not backed up
-        proxmox = self._pve_connect()
-        not_backed_up = proxmox('/cluster/backup-info/not-backed-up').get()
+        # get VMs not backed up
+        url = '/cluster/backup-info/not-backed-up'
+        not_backed_up = self.proxmox(url).get()
         
         msg = 'VMs not backed up: {}'.format(not_backed_up)
         logging.debug(msg)
+
+        # get virtual machines on selected node if given
+        if self.node:
+            node_vms = self._get_node_vms(self.node)
 
         # exclude VMs if requested
         excluded_vmids = list(set(self.excluded_vmids))
@@ -286,6 +303,36 @@ class Checker:
         )
 
         return proxmox
+
+    def _get_node_vms(self, node_name):
+        """Get the virtual machines running on a specific PVE node
+
+        Args:
+            node_name (str): the name of the node to get the VM list for
+
+        Return:
+            a list of dictonaries with info about VMs running on the given
+            PVE node
+        """
+
+        # get info about qemu and lxc virtual machines
+        node_vms = []
+        url = 'nodes/{}/{}'
+        vm_types = ['qemu', 'lxc']
+        for vm_type in vm_types:
+            vms = self.proxmox(url.format(node_name, vm_type)).get()
+
+            for vm in vms:
+                node_vms.append({
+                    'vmid': vm['vmid'],
+                    'name': vm['name'],
+                    'type': vm_type
+                })
+
+        vm_count = len(node_vms)
+        msg = '{} virtual machines on node {}: {}'
+        msg = msg.format(vm_count, node_name, node_vms)
+        logging.debug(msg)
 
 
 if __name__ == "__main__":
