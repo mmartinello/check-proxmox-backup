@@ -68,9 +68,6 @@ class Checker:
         # manage arguments
         self._manage_arguments(args)
 
-        # run the workflow and store the results
-        self._results = self.handle()
-
     def add_arguments(self, parser):
         """Add command arguments to the argument parser.
         """
@@ -231,9 +228,6 @@ class Checker:
             self._check_vm_not_backed_up()
         else:
             exit_with_error('Unsupported check mode: {}'.format(self.check))
-
-        # I should never arrive here
-        exit_with_error('I should never arrive here!')
 
     def _get_included_vmids(self):
         """Get included VM IDs
