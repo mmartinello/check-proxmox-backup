@@ -44,6 +44,9 @@ def icinga_exit(level, details=None, perfdata=[]):
     sys.exit(level)
 
 def exit_with_error(message):
+    """Exit with the Icinga Unknown status code and the given error
+    """
+
     message = 'ERROR: {}'.format(message)
     icinga_exit(ICINGA_UNKNOWN, message)
 
@@ -69,6 +72,9 @@ class Checker:
         self._results = self.handle()
 
     def add_arguments(self, parser):
+        """Add command arguments to the argument parser.
+        """
+        
         # username argument validator: user@realm
         def pve_api_username(arg_value, pat=re.compile(r"^.+@[a-z|A-Z]+$")):
             if not pat.match(arg_value):
@@ -169,6 +175,9 @@ class Checker:
         )
 
     def _manage_arguments(self, args):
+        """Get command arguments from the argument parser and load them.
+        """
+
         # positional: check to be done
         self.check = getattr(args, 'check')
 
@@ -211,10 +220,13 @@ class Checker:
         self.node = getattr(args, 'node', None)
 
     def handle(self):
+        """Connect to Proxmox API, start the requested check and give result.
+        """
+
         # connect to Proxmox and ask for VMs not backed up
         self.proxmox = self._pve_connect()
         
-
+        # not backed up virtual machines check mode
         if self.check == 'not_backed_up':
             self._check_vm_not_backed_up()
 
