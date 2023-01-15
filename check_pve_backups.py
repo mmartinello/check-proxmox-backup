@@ -229,20 +229,24 @@ class Checker:
         # not backed up virtual machines check mode
         if self.check == 'not_backed_up':
             self._check_vm_not_backed_up()
+        else:
+            exit_with_error('Unsupported check mode: {}'.format(self.check))
 
-        # nothing has failed before, return success
-        icinga_exit(ICINGA_OK)
+        # I should never arrive here
+        exit_with_error('I should never arrive here!')
 
     def _get_included_vmids(self):
-            """Get included VM IDs
-            """
-            included_vmids = list(set(self.included_vmids))
-            logging.debug("Included VMs: {}".format(included_vmids))
-            return included_vmids
+        """Get included VM IDs
+        """
+
+        included_vmids = list(set(self.included_vmids))
+        logging.debug("Included VMs: {}".format(included_vmids))
+        return included_vmids
 
     def _get_excluded_vmids(self):
         """Get excluded VM IDs
         """
+
         excluded_vmids = list(set(self.excluded_vmids))
         logging.debug("Excluded VMs: {}".format(excluded_vmids))
         return excluded_vmids
@@ -310,6 +314,30 @@ class Checker:
 
     def _get_vms_not_backed_up(self, filtered_vms=None, included_vmids=[],
                                excluded_vmids=[]):
+        """Get the filtered list of the not backed up virtual machines
+
+        Args:
+            filtered_vms (list): the VM IDS to check (None if all)
+            included_vms (list): the VM IDS to include in the response
+            excluded_vms (list): the VM IDS to exclude from the response
+
+        Return:
+            a list of dictonaries with info about VMs not backed up, in this
+            format:
+
+            [
+                {
+                    'name': 'foo',
+                    'vmid': 101,
+                    'type': 'qemu'
+                },
+                {
+                    'name': 'bar',
+                    'vmid': 102,
+                    'type': 'lxc'
+                }
+            ]
+        """
 
         # get VMs not backed up in the whole cluster
         url = '/cluster/backup-info/not-backed-up'
@@ -362,6 +390,22 @@ class Checker:
         return self.not_backed_up_vms
 
     def _add_not_backed_up_vm(self, vm):
+        """Add the given virtual machine info to the not backed up virtual
+        machines list
+
+        Args:
+            vm (dict): a dict containing virtual machine info, for example:
+                {
+                    'name': 'test-not-backed-up',
+                    'vmid': 9999,
+                    'type': 'qemu|lxc'
+                }
+
+        Return:
+            a list of dictonaries with info about VMs running on the given
+            PVE node
+        """
+
         vmid = vm['vmid']
         msg = 'Adding the VMID {} to not backed up list'
         logging.debug(msg.format(vmid))
