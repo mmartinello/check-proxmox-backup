@@ -88,9 +88,10 @@ class Checker:
 
         parser.add_argument(
             'check',
-            choices=['not_backed_up'],
+            choices=['not_backed_up', 'backups'],
             help='The check to be done:'
-                 ' (not_backed_up = virtual machines not backed up '
+                 ' (not_backed_up = virtual machines not backed up)'
+                 ' (backups = available backups for virtual machines)'
         )
 
         parser.add_argument(
@@ -140,9 +141,15 @@ class Checker:
             '-l', '--level',
             choices=['warning', 'critical'],
             dest='level',
-            default='critical',
+            default=None,
             help='The Icinga error level to raise in case of failure'
                  ' (\'not_backed_up\' check only)'
+        )
+
+        parser.add_argument(
+            '-s', '--storage',
+            dest='storage',
+            help='The backup storage'
         )
 
         parser.add_argument(
@@ -203,6 +210,9 @@ class Checker:
         # excluded VM IDs
         self.excluded_vmids = getattr(args, 'excluded_vmids', [])
 
+        # backup storage
+        self.storage = getattr(args, 'storage')
+
         # print arguments (debug)
         logging.debug('Command arguments: {}'.format(args))
 
@@ -211,7 +221,11 @@ class Checker:
         if level and self.check != 'not_backed_up':
             exit_with_error('level not allowed on this check mode')
         else:
-            self.level = getattr(args, 'level')
+            self.level = getattr(args, 'level', 'critical')
+
+        # storage required in backups check mode
+        if self.check == 'backups' and not self.storage:
+            exit_with_error('storage required in \'backups\' check mode')
 
         # Proxmox node
         self.node = getattr(args, 'node', None)
@@ -226,6 +240,8 @@ class Checker:
         # not backed up virtual machines check mode
         if self.check == 'not_backed_up':
             self._check_vm_not_backed_up()
+        elif self.check == 'backups':
+            self._check_vm_backups()
         else:
             exit_with_error('Unsupported check mode: {}'.format(self.check))
 
@@ -404,6 +420,18 @@ class Checker:
         msg = 'Adding the VMID {} to not backed up list'
         logging.debug(msg.format(vmid))
         self.not_backed_up_vms.append(vm)
+
+    def _check_vm_backups(self):
+        """Check available backups for virtual machines
+        """
+
+        self._get_backups(self.node, self.storage)
+
+    def _get_backups(self, node_name, storage_name):
+        url = 'nodes/{}/storage/{}/content'
+        url = url.format(node_name, storage_name)
+        backups = self.proxmox(url).get()
+        logging.debug('Available backups: {}'.format(backups))
 
     def _pve_connect(self):
         """Connect to Proxmox VE API
