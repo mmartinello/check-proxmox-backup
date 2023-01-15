@@ -239,71 +239,21 @@ class Checker:
         """Check if there are virtual machines without backup jobs
         """
 
-        # get VMs not backed up
-        url = '/cluster/backup-info/not-backed-up'
-        cluster_not_backed_up_vms = self.proxmox(url).get()
-        
-        msg = 'Cluster VMs not backed up in the whole cluster: {}'
-        msg = msg.format(cluster_not_backed_up_vms)
-        logging.debug(msg)
-
         # get included and excluded VMs if requested
         included_vmids = self._get_included_vmids()
         excluded_vmids = self._get_excluded_vmids()
 
         # get virtual machines on selected node if given
+        filtered_vmdids = None
         if self.node:
-            node_vms = self._get_node_vms(self.node)
+            filtered_vmdids = self._get_node_vms(self.node)
 
-        # not backed up virtual machines
-        not_backed_up_vms = []
+        not_backed_up_vms = self._get_vms_not_backed_up(
+            filtered_vmdids,
+            included_vmids,
+            excluded_vmids
+        )
 
-        # cycle VMs not backed up in the cluster
-        for vm in cluster_not_backed_up_vms:
-            vmid = vm['vmid']
-
-            if self.node:
-                if vmid in node_vms:
-                    if included_vmids:
-                        if vmid in included_vmids:
-                            msg = '1 Adding the VMID {} to not backed up list'
-                            logging.debug(msg.format(vmid))
-                            not_backed_up_vms.append(vm)
-                            continue
-                        else:
-                            continue
-                    if excluded_vmids:
-                        if vmid not in excluded_vmids:
-                            msg = '2 Adding the VMID {} to not backed up list'
-                            logging.debug(msg.format(vmid))
-                            not_backed_up_vms.append(vm)
-                            continue
-                        else:
-                            continue
-                    else:
-                        msg = '3 Adding the VMID {} to not backed up list'
-                        logging.debug(msg.format(vmid))
-                        not_backed_up_vms.append(vm)
-                else:
-                    continue
-            else:
-                if included_vmids:
-                    if vmid in included_vmids:
-                        msg = '4 Adding the VMID {} to not backed up list'
-                        logging.debug(msg.format(vmid))
-                        not_backed_up_vms.append(vm)
-                        continue
-                    else:
-                        continue
-                if excluded_vmids:
-                    if vmid not in excluded_vmids:
-                        msg = '5 Adding the VMID {} to not backed up list'
-                        logging.debug(msg.format(vmid))
-                        not_backed_up_vms.append(vm)
-                        continue
-                    else:
-                        continue
-                
         # compose perfdata
         not_backed_up_count = len(not_backed_up_vms)
         perfdata = ['not_backed_up={}'.format(not_backed_up_count)]
@@ -345,6 +295,65 @@ class Checker:
         else:
             msg = 'All VMs are backed up'
             icinga_exit(ICINGA_OK, msg, perfdata)
+
+    def _get_vms_not_backed_up(self, filtered_vms=None, included_vmids=[],
+                               excluded_vmids=[]):
+
+        # get VMs not backed up in the whole cluster
+        url = '/cluster/backup-info/not-backed-up'
+        cluster_not_backed_up_vms = self.proxmox(url).get()
+        
+        msg = 'Cluster VMs not backed up in the whole cluster: {}'
+        msg = msg.format(cluster_not_backed_up_vms)
+        logging.debug(msg)
+
+        # not backed up virtual machines
+        self.not_backed_up_vms = []
+
+        # cycle VMs not backed up in the cluster
+        for vm in cluster_not_backed_up_vms:
+            vmid = vm['vmid']
+
+            if filtered_vms:
+                if vmid in filtered_vms:
+                    if included_vmids:
+                        if vmid in included_vmids:
+                            self._add_not_backed_up_vm(vm)
+                            continue
+                        else:
+                            continue
+                    if excluded_vmids:
+                        if vmid not in excluded_vmids:
+                            self._add_not_backed_up_vm(vm)
+                            continue
+                        else:
+                            continue
+                    else:
+                        self._add_not_backed_up_vm(vm)
+                        continue
+                else:
+                    continue
+            else:
+                if included_vmids:
+                    if vmid in included_vmids:
+                        self._add_not_backed_up_vm(vm)
+                        continue
+                    else:
+                        continue
+                if excluded_vmids:
+                    if vmid not in excluded_vmids:
+                        self._add_not_backed_up_vm(vm)
+                        continue
+                    else:
+                        continue
+
+        return self.not_backed_up_vms
+
+    def _add_not_backed_up_vm(self, vm):
+        vmid = vm['vmid']
+        msg = 'Adding the VMID {} to not backed up list'
+        logging.debug(msg.format(vmid))
+        self.not_backed_up_vms.append(vm)
 
     def _pve_connect(self):
         """Connect to Proxmox VE API
