@@ -11,6 +11,7 @@ _VERSION = '1.0'
 _VERSION_DESCR = 'Monitors virtual machines backups of a Proxmox VE node.'
 
 import argparse
+from datetime import datetime
 import logging
 from proxmoxer import ProxmoxAPI
 import sys
@@ -158,6 +159,14 @@ class Checker:
             help='Filter the VMs running on this Proxmox node'
         )
 
+        parser.add_argument(
+            '-t', '--timeout',
+            dest='timeout',
+            default=300,
+            type=int,
+            help='The timeout in seconds'
+        )
+
         vms_group = parser.add_mutually_exclusive_group()
 
         vms_group.add_argument(
@@ -229,6 +238,9 @@ class Checker:
 
         # Proxmox node
         self.node = getattr(args, 'node', None)
+
+        # Timeout
+        self.timeout = getattr(args, 'timeout', 300)
 
     def handle(self):
         """Connect to Proxmox API, start the requested check and give result.
@@ -410,15 +422,12 @@ class Checker:
                     'vmid': 9999,
                     'type': 'qemu|lxc'
                 }
-
-        Return:
-            a list of dictonaries with info about VMs running on the given
-            PVE node
         """
 
         vmid = vm['vmid']
         msg = 'Adding the VMID {} to not backed up list'
         logging.debug(msg.format(vmid))
+
         self.not_backed_up_vms.append(vm)
 
     def _check_vm_backups(self):
@@ -427,11 +436,60 @@ class Checker:
 
         self._get_backups(self.node, self.storage)
 
-    def _get_backups(self, node_name, storage_name):
+    def _get_backups(self, node_name, storage_name, vms=[]):
         url = 'nodes/{}/storage/{}/content'
         url = url.format(node_name, storage_name)
-        backups = self.proxmox(url).get()
+        backups = self.proxmox(url).get(content='backup')
         logging.debug('Available backups: {}'.format(backups))
+
+        self.backups = {}
+
+        # cycle response
+        for backup in backups:
+            vmid = backup['vmid']
+
+            if not vms:
+                self._add_backup(backup)
+                continue
+            if vms and vmid in vms:
+                self._add_backup(backup)
+                continue
+                
+        return self.backups
+
+    def _add_backup(self, backup):
+        """Insert the given backup in the backup list, only if the given
+        backup is newer than the already existing backup for the backup vmid
+
+        Args:
+            backup (dict): a dict containing backup info, for example:
+                {
+                    'vmid': 9999,
+                    'ctime': 1659225602 (creation timestamp)
+                }
+        """
+
+        vmid = backup['vmid']
+        ctime = backup['ctime']
+
+        # if there are not backups for this vmid, add
+        if vmid not in self.backups:
+            msg = 'Adding a backup for the VMID {} '
+            msg+= 'because I have no backups for this VMID'
+            logging.debug(msg.format(vmid))
+            self.backups[vmid] = backup
+        else:
+            existing_backup = self.backups[vmid]
+            if ctime > existing_backup['ctime']:
+                msg = 'Adding a backup for the VMID {} '
+                msg+= 'because it is the last one'
+                logging.debug(msg.format(vmid))
+                self.backups[vmid] = backup
+            else:
+                return None
+
+        # return the inserted backup
+        return backup
 
     def _pve_connect(self):
         """Connect to Proxmox VE API
@@ -444,14 +502,15 @@ class Checker:
         msg = msg.format(host, self.username)
         logging.debug(msg)
 
-        # connect to Proxmox API
+        # create a new connection to Proxmox API
         proxmox = ProxmoxAPI(
             host,
             user=self.username,
             password=self.password,
             verify_ssl=self.verify_ssl,
             backend='https',
-            service='pve'
+            service='pve',
+            timeout=self.timeout
         )
 
         return proxmox
@@ -486,6 +545,11 @@ class Checker:
 
 
 if __name__ == "__main__":
-    # run the procedure and get results
-    main = Checker()
-    main.handle()
+    # run the procedure and get results: if I get an exception I exit with
+    # the Icinga UNKNOWN status code
+    try:
+        main = Checker()
+        main.handle()
+    except Exception as e:
+        logging.debug(e.__class__.__name__)
+        exit_with_error(e)
