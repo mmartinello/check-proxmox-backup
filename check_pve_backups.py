@@ -468,11 +468,22 @@ class Checker:
         """Check available backups for virtual machines
         """
 
-        if self.node:
+        # If included VM IDs are given get backups for these VMs
+        if self.included_vmids:
+            vms = self.included_vmids
+        # Else, if node is given, get vms running on the given node
+        elif self.node:
             node_name = self.node
             vms = self._get_node_vms(node_name)
+        # Else, don't filter vms
         else:
             vms = []
+
+        # If excluded VM IDs are given, exclude them from the VM list
+        if self.excluded_vmids:
+            for vmid in self.excluded_vmids:
+                if vmid in vms:
+                    vms.remove(vmid)
 
         backups = self._get_backups(self.node, self.storage, vms)
         logging.debug("Available backups: {}".format(backups))
