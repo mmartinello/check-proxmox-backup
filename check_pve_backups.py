@@ -187,6 +187,20 @@ class Checker:
             help='List of VM IDs to be excluded from check'
         )
 
+        parser.add_argument(
+            '-w', '--warning',
+            dest='warning',
+            type=int,
+            help='Warning threshold in minutes'
+        )
+
+        parser.add_argument(
+            '-c', '--critical',
+            dest='critical',
+            type=int,
+            help='Critical threshold in minutes'
+        )
+
     def _manage_arguments(self, args):
         """Get command arguments from the argument parser and load them.
         """
@@ -234,13 +248,33 @@ class Checker:
 
         # storage required in backups check mode
         if self.check == 'backups' and not self.storage:
-            exit_with_error('storage required in \'backups\' check mode')
+            exit_with_error('storage required in backups check mode')
 
         # Proxmox node
         self.node = getattr(args, 'node', None)
 
         # Timeout
         self.timeout = getattr(args, 'timeout', 300)
+
+        # Warning threshold in minutes
+        self.warning = getattr(args, 'warning')
+        if self.check != 'backups' and self.warning:
+            exit_with_error(
+                'Warning threshold not allowed in backups check mode'
+            )
+        if self.check == 'backups' and not self.warning:
+            exit_with_error('Warning threshold required in backups check mode')
+
+        # Critical threshold in minutes
+        self.critical = getattr(args, 'critical')
+        if self.check != 'backups' and self.critical:
+            exit_with_error(
+                'Critical threshold not allowed in backups check mode'
+            )
+        if self.check == 'backups' and not self.critical:
+            exit_with_error(
+                'Critical threshold required in backups check mode'
+            )
 
     def handle(self):
         """Connect to Proxmox API, start the requested check and give result.
@@ -434,24 +468,44 @@ class Checker:
         """Check available backups for virtual machines
         """
 
-        self._get_backups(self.node, self.storage)
+        if self.node:
+            node_name = self.node
+            vms = self._get_node_vms(node_name)
+        else:
+            vms = []
 
-    def _get_backups(self, node_name, storage_name, vms=[]):
+        backups = self._get_backups(self.node, self.storage, vms)
+        logging.debug("Available backups: {}".format(backups))
+
+    def _get_backups(self, node_name, storage_name, vmids=[]):
+        """Get backups stored into the given storage on the given PVE node.
+        If a list of VM IDs is provided, only backups of the listed VMs are
+        taken.
+
+        Args:
+            node_name (string): the name of the PVE cluster node
+            storage_name (string): the name of the storage to list backups from
+            vmids (list): the list of IDs of virtual machines to get backups
+                for
+        """
+
         url = 'nodes/{}/storage/{}/content'
         url = url.format(node_name, storage_name)
         backups = self.proxmox(url).get(content='backup')
-        logging.debug('Available backups: {}'.format(backups))
-
         self.backups = {}
 
-        # cycle response
+        # cycle backup list
         for backup in backups:
             vmid = backup['vmid']
+            ctime = backup['ctime']
+            backup = {'vmid': vmid, 'ctime': ctime}
 
-            if not vms:
+            # if vmids not provided, consider all backups
+            if not vmids:
                 self._add_backup(backup)
                 continue
-            if vms and vmid in vms:
+            # else check if the backup vmid is into the vmids list
+            if vmids and vmid in vmids:
                 self._add_backup(backup)
                 continue
                 
@@ -476,14 +530,14 @@ class Checker:
         if vmid not in self.backups:
             msg = 'Adding a backup for the VMID {} '
             msg+= 'because I have no backups for this VMID'
-            logging.debug(msg.format(vmid))
+            #logging.debug(msg.format(vmid))
             self.backups[vmid] = backup
         else:
             existing_backup = self.backups[vmid]
             if ctime > existing_backup['ctime']:
                 msg = 'Adding a backup for the VMID {} '
                 msg+= 'because it is the last one'
-                logging.debug(msg.format(vmid))
+                #logging.debug(msg.format(vmid))
                 self.backups[vmid] = backup
             else:
                 return None
