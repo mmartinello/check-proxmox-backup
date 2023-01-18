@@ -16,6 +16,7 @@ import logging
 from proxmoxer import ProxmoxAPI
 import sys
 import re
+import time
 
 ICINGA_OK = 0
 ICINGA_WARNING = 1
@@ -68,6 +69,8 @@ class Checker:
 
         # manage arguments
         self._manage_arguments(args)
+
+        self._proxmox = None
 
     def add_arguments(self, parser):
         """Add command arguments to the argument parser.
@@ -281,7 +284,7 @@ class Checker:
         """
 
         # connect to Proxmox and ask for VMs not backed up
-        self.proxmox = self._pve_connect()
+        # self.proxmox = self._pve_connect()
         
         # not backed up virtual machines check mode
         if self.check == 'not_backed_up':
@@ -290,6 +293,13 @@ class Checker:
             self._check_vm_backups()
         else:
             exit_with_error('Unsupported check mode: {}'.format(self.check))
+
+    @property
+    def proxmox(self):
+        if self._proxmox is None:
+            self._proxmox = self._pve_connect()
+        
+        return self._proxmox
 
     def _get_included_vmids(self):
         """Get included VM IDs
@@ -470,23 +480,66 @@ class Checker:
 
         # If included VM IDs are given get backups for these VMs
         if self.included_vmids:
-            vms = self.included_vmids
+            vmids = self.included_vmids
         # Else, if node is given, get vms running on the given node
         elif self.node:
             node_name = self.node
-            vms = self._get_node_vms(node_name)
+            vmids = self._get_node_vms(node_name)
         # Else, don't filter vms
         else:
-            vms = []
+            vmids = []
 
         # If excluded VM IDs are given, exclude them from the VM list
         if self.excluded_vmids:
             for vmid in self.excluded_vmids:
-                if vmid in vms:
-                    vms.remove(vmid)
+                if vmid in vmids:
+                    vmids.remove(vmid)
 
-        backups = self._get_backups(self.node, self.storage, vms)
+        # Get backups for given VM ids 
+        backups = self._get_backups(self.node, self.storage, vmids)
         logging.debug("Available backups: {}".format(backups))
+
+        # Get thresholds in seconds
+        warning_sec = self.warning
+        critical_sec = self.critical
+
+        # Comprare backups age with thresholds
+        ok_backups = {}
+        warning_backups = {}
+        critical_backups = {}
+        unavailable_backups = []
+
+        # Current timestamp
+        current_timestamp = time.time()
+        logging.debug("Current timestamp: {}".format(current_timestamp))
+
+        # Iterate VM IDs and compare thresholds
+        for vmid in vmids:
+            if vmid not in backups:
+                logging.debug("No backups for VM {} available".format(vmid))
+                unavailable_backups.append(vmid)
+            else:
+                backup = backups[vmid]
+                age_sec = current_timestamp - backup['ctime']
+
+                if age_sec > critical_sec:
+                    critical_backups[vmid] = backup
+                elif age_sec > warning_sec:
+                    warning_backups[vmid] = backup
+                else:
+                    ok_backups[vmid] = backup
+        
+        # Iterate available backups
+        for vmid, backup in backups.items():
+            vmid = backup['vmid']
+            ctime = backup['ctime']
+            age = current_timestamp - ctime
+
+            msg = "Backup for VM {} has ctime {} and age {}"
+            msg = msg.format(vmid, ctime, age)
+            logging.debug(msg)
+
+            
 
     def _get_backups(self, node_name, storage_name, vmids=[]):
         """Get backups stored into the given storage on the given PVE node.
