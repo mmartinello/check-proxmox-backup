@@ -106,6 +106,14 @@ class Checker:
         )
 
         parser.add_argument(
+            '--debug2',
+            action="store_true",
+            help='Print exceptions to console. This may make the plugin'
+                 ' not working and get wrong results with Icinga since it'
+                 ' prints stuff to console.'
+        )
+
+        parser.add_argument(
             '-H', '--host',
             dest='host',
             default='localhost',
@@ -212,7 +220,9 @@ class Checker:
         self.check = getattr(args, 'check')
 
         # debug flag
-        if getattr(args, 'debug', False):
+        self.debug = getattr(args, 'debug', False)
+        self.debug2 = getattr(args, 'debug2', False)
+        if self.debug or self.debug2:
             logging.basicConfig(level=logging.DEBUG)
 
         # the Proxmox API host
@@ -528,18 +538,60 @@ class Checker:
                     warning_backups[vmid] = backup
                 else:
                     ok_backups[vmid] = backup
-        
-        # Iterate available backups
-        for vmid, backup in backups.items():
-            vmid = backup['vmid']
-            ctime = backup['ctime']
-            age = current_timestamp - ctime
 
-            msg = "Backup for VM {} has ctime {} and age {}"
-            msg = msg.format(vmid, ctime, age)
-            logging.debug(msg)
+        # Compose the return data
+        data = {
+            'unavailable': unavailable_backups,
+            'critical': critical_backups,
+            'warning': warning_backups,
+            'ok': ok_backups
+        }
 
-            
+        logging.debug(data)
+
+        # Compose exit value and messages
+        messages = {}
+        perfdata = []
+        backup_msg = 'backup for VMID {} is {} old'
+        if data['unavailable']:
+            vms = [ str(i) for i in data['unavailable'] ]
+            logging.debug("VMS: {}".format(vms))
+            msg = 'VMS WITH NO BACKUPS: {}'.format(', '.join(vms))
+            messages['unavailable'] = msg
+        if data['critical']:
+            vm_messages = []
+            for vmid, backup in data['critical'].items():
+                vm_messages.append(backup_msg.format(vmid, backup['ctime']))
+            msg = 'CRITICAL BACKUPS: {}'.format(', '.join(vm_messages))
+            messages['critical'] = msg
+        if data['warning']:
+            vm_messages = []
+            for vmid, backup in data['warning'].items():
+                vm_messages.append(backup_msg.format(vmid, backup['ctime']))
+            msg = 'WARNING BACKUPS: {}'.format(', '.join(vm_messages))
+            messages['warning'] = msg
+        if data['ok']:
+            vm_messages = []
+            for vmid, backup in data['warning'].items():
+                vm_messages.append(backup_msg.format(vmid, backup['ctime']))
+            msg = 'OK BACKUPS: {}'.format(', '.join(vm_messages))
+            messages['ok'] = msg
+
+        logging.debug("Composed messages: {}".format(messages))
+        message = '; '.join(map(str, messages.values()))
+
+        # Decide exit message
+        if messages['unavailable'] or messages['critical']:
+            exit_code = ICINGA_CRITICAL
+        elif messages['warning']:
+            exit_code = ICINGA_WARNING
+        elif messages['ok']:
+            exit_code = ICINGA_OK
+        else:
+            exit_code = ICINGA_UNKNOWN
+
+        # Exit
+        icinga_exit(exit_code, message, perfdata)
 
     def _get_backups(self, node_name, storage_name, vmids=[]):
         """Get backups stored into the given storage on the given PVE node.
@@ -665,9 +717,14 @@ class Checker:
 if __name__ == "__main__":
     # run the procedure and get results: if I get an exception I exit with
     # the Icinga UNKNOWN status code
-    try:
-        main = Checker()
+    main = Checker()
+
+    if main.debug2:
         main.handle()
-    except Exception as e:
-        logging.debug(e.__class__.__name__)
-        exit_with_error(e)
+    else:
+        try:
+            main = Checker()
+            main.handle()
+        except Exception as e:
+            logging.debug(e.__class__.__name__)
+            exit_with_error(e)
