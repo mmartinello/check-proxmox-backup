@@ -589,7 +589,7 @@ class Checker:
             messages['warning'] = msg
         if data['ok']:
             vm_messages = []
-            for vmid, backup in data['warning'].items():
+            for vmid, backup in data['ok'].items():
                 vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
             msg = 'OK BACKUPS: {}'.format(', '.join(vm_messages))
             messages['ok'] = msg
