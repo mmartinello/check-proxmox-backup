@@ -257,7 +257,15 @@ class Checker:
         if level and self.check != 'not_backed_up':
             exit_with_error('level not allowed on this check mode')
         else:
-            self.level = getattr(args, 'level', 'critical')
+            logging.debug("Setting the default level as critical")
+            if level is None:
+                self.level = 'critical'
+            else:
+                self.level = getattr(args, 'level')
+
+        msg = "Selected exit level: {}"
+        msg = msg.format(self.level)
+        logging.debug(msg)
 
         # storage required in backups check mode
         if self.check == 'backups' and not self.storage:
@@ -462,6 +470,11 @@ class Checker:
                         continue
                     else:
                         continue
+                else:
+                    msg = 'Adding the VM {} to the not backed up VMs ...'
+                    msg = msg.format(vm)
+                    logging.debug(msg)
+                    self._add_not_backed_up_vm(vm)
 
         return self.not_backed_up_vms
 
