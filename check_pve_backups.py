@@ -523,8 +523,10 @@ class Checker:
         logging.debug("Available backups: {}".format(backups))
 
         # Get thresholds in seconds
-        warning_sec = self.warning
-        critical_sec = self.critical
+        warning_sec = self.warning * 60
+        critical_sec = self.critical * 60
+        logging.debug("Warning seconds: {}".format(warning_sec))
+        logging.debug("Critical seconds: {}".format(critical_sec))
 
         # Comprare backups age with thresholds
         ok_backups = {}
