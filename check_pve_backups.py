@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Nagios/Icinga plugin to monitor virtual machines backups of a Proxmox VE node
