@@ -565,7 +565,9 @@ class Checker:
         # Compose exit value and messages
         messages = {}
         perfdata = []
-        backup_msg = 'backup for VMID {} is {} old'
+        backup_msg = 'last backup for VMID {} created at {}'
+        backup_timestamp = int(backup['ctime'])
+        backup_ctime_string = datetime.fromtimestamp(backup_timestamp).strftime('%Y-%m-%d %H:%M:%S')
         if data['unavailable']:
             vms = [ str(i) for i in data['unavailable'] ]
             logging.debug("VMS: {}".format(vms))
@@ -574,19 +576,19 @@ class Checker:
         if data['critical']:
             vm_messages = []
             for vmid, backup in data['critical'].items():
-                vm_messages.append(backup_msg.format(vmid, backup['ctime']))
+                vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
             msg = 'CRITICAL BACKUPS: {}'.format(', '.join(vm_messages))
             messages['critical'] = msg
         if data['warning']:
             vm_messages = []
             for vmid, backup in data['warning'].items():
-                vm_messages.append(backup_msg.format(vmid, backup['ctime']))
+                vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
             msg = 'WARNING BACKUPS: {}'.format(', '.join(vm_messages))
             messages['warning'] = msg
         if data['ok']:
             vm_messages = []
             for vmid, backup in data['warning'].items():
-                vm_messages.append(backup_msg.format(vmid, backup['ctime']))
+                vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
             msg = 'OK BACKUPS: {}'.format(', '.join(vm_messages))
             messages['ok'] = msg
 
