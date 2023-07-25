@@ -124,7 +124,7 @@ class Checker:
             '-P', '--port',
             dest='port',
             type=int,
-            default=3306,
+            default=8006,
             help='The Proxmox port'
         )
 
