@@ -212,6 +212,12 @@ class Checker:
             help='Critical threshold in minutes'
         )
 
+        parser.add_argument(
+            '--print-ok', '-k',
+            action="store_true",
+            help='Print OK backups (default false)'
+        )
+
     def _manage_arguments(self, args):
         """Get command arguments from the argument parser and load them.
         """
@@ -248,6 +254,9 @@ class Checker:
 
         # backup storage
         self.storage = getattr(args, 'storage')
+
+        # backup storage
+        self.print_ok = getattr(args, 'print_ok', False)
 
         # print arguments (debug)
         logging.debug('Command arguments: {}'.format(args))
@@ -587,7 +596,7 @@ class Checker:
                 vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
             msg = 'WARNING BACKUPS: {}'.format(', '.join(vm_messages))
             messages['warning'] = msg
-        if data['ok']:
+        if data['ok'] and self.print_ok:
             vm_messages = []
             for vmid, backup in data['ok'].items():
                 vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
