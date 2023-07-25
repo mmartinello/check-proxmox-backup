@@ -581,37 +581,63 @@ class Checker:
         backup_ctime_string = datetime.fromtimestamp(backup_timestamp).strftime('%Y-%m-%d %H:%M:%S')
         if data['unavailable']:
             vms = [ str(i) for i in data['unavailable'] ]
-            logging.debug("VMS: {}".format(vms))
-            msg = 'VMS WITH NO BACKUPS: {}'.format(', '.join(vms))
+            logging.debug("Unavailable VMs: {}".format(vms))
+            vms_count = len(vms)
+            msg = '{} VM{} WITH NO BACKUPS: {}'.format(
+                vms_count,
+                's' if vms_count > 1 else '',
+                ', '.join(vms)
+            )
             messages['unavailable'] = msg
         if data['critical']:
             vm_messages = []
+            vms_count = len(data['critical'])
             for vmid, backup in data['critical'].items():
                 vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
-            msg = 'CRITICAL BACKUPS: {}'.format(', '.join(vm_messages))
+            msg = '{} VM{} WITH CRITICAL BACKUPS: {}'.format(
+                vms_count,
+                's' if vms_count > 1 else '',
+                ', '.join(vm_messages)
+            )
             messages['critical'] = msg
         if data['warning']:
             vm_messages = []
+            vms_count = len(data['warning'])
             for vmid, backup in data['warning'].items():
                 vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
-            msg = 'WARNING BACKUPS: {}'.format(', '.join(vm_messages))
+            msg = '{} VM{} WITH WARNING BACKUPS: {}'.format(
+                vms_count,
+                's' if vms_count > 1 else '',
+                ', '.join(vm_messages)
+            )
             messages['warning'] = msg
-        if data['ok'] and self.print_ok:
-            vm_messages = []
-            for vmid, backup in data['ok'].items():
-                vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
-            msg = 'OK BACKUPS: {}'.format(', '.join(vm_messages))
+        if data['ok']:
+            if self.print_ok:
+                vm_messages = []
+                vms_count = len(data['ok'])
+                for vmid, backup in data['ok'].items():
+                    vm_messages.append(backup_msg.format(vmid, backup_ctime_string))
+                msg = '{} VM{} WITH OK BACKUPS: {}'.format(
+                    vms_count,
+                    's' if vms_count > 1 else '',
+                    ', '.join(vm_messages)
+                )
+            else:
+                msg = "{} VMs has updated backups".format(len(data['ok']))
             messages['ok'] = msg
 
         logging.debug("Composed messages: {}".format(messages))
         message = '; '.join(map(str, messages.values()))
 
         # Decide exit message
-        if messages['unavailable'] or messages['critical']:
+        #if messages['unavailable'] or messages['critical']:
+        if "unavailable" in messages or "critical" in messages:
             exit_code = ICINGA_CRITICAL
-        elif messages['warning']:
+        #elif messages['warning']:
+        elif "warning" in messages:
             exit_code = ICINGA_WARNING
-        elif messages['ok']:
+        #elif messages['ok']:
+        elif "ok" in messages:
             exit_code = ICINGA_OK
         else:
             exit_code = ICINGA_UNKNOWN
