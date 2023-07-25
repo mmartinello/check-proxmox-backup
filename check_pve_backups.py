@@ -623,6 +623,9 @@ class Checker:
         backups = self.proxmox(url).get(content='backup')
         self.backups = {}
 
+        msg = "Backups returned from API: {}".format(backups)
+        logging.debug(msg)
+
         # cycle backup list
         for backup in backups:
             vmid = backup['vmid']
