@@ -14,6 +14,7 @@ import argparse
 from datetime import datetime
 import logging
 from proxmoxer import ProxmoxAPI
+from proxmoxer.core import ResourceException
 import sys
 import re
 import time
@@ -659,7 +660,14 @@ class Checker:
 
         url = 'nodes/{}/storage/{}/content'
         url = url.format(node_name, storage_name)
-        backups = self.proxmox(url).get(content='backup')
+        request = self.proxmox(url)
+
+        try:
+            backups = request.get(content='backup')
+        except ResourceException as e:
+            # TODO: if e.status_code == 596 retry, else raise e
+            raise e
+
         self.backups = {}
 
         msg = "Backups returned from API: {}".format(backups)
